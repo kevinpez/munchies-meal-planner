@@ -1,101 +1,241 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from 'react';
+import axios from 'axios';
+import {
+  Container,
+  Typography,
+  TextField,
+  Button,
+  Chip,
+  Box,
+  Paper,
+  Grid,
+  CircularProgress
+} from '@mui/material';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { CloudUpload } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
+import Image from 'next/image';
+
+const theme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: {
+      main: '#90caf9',
+    },
+    background: {
+      default: '#121212',
+      paper: '#1e1e1e',
+    },
+  },
+});
+
+const VisuallyHiddenInput = styled('input')({
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  height: 1,
+  overflow: 'hidden',
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  whiteSpace: 'nowrap',
+  width: 1,
+});
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [description, setDescription] = useState('');
+  const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
+  const [meal, setMeal] = useState('');
+  const [recipeImage, setRecipeImage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [pantryIngredients, setPantryIngredients] = useState<string>('');
+  const [uploadLoading, setUploadLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const restrictions = [
+    'Vegetarian',
+    'Vegan',
+    'Gluten-free',
+    'Dairy-free',
+    'Nut-free',
+    'Keto',
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const response = await axios.post('http://localhost:8000/generate-meal', {
+        description: description.trim() || undefined,
+        dietary_restrictions: dietaryRestrictions.join(', ') || undefined,
+      });
+      setMeal(response.data.meal);
+      setRecipeImage(response.data.image_url);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 404) {
+          alert('Backend endpoint not found. Please check if the server is running.');
+        } else {
+          alert(`Error: ${error.response?.data?.detail || 'An unknown error occurred'}`);
+        }
+      } else {
+        alert('An unexpected error occurred.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleRestriction = (restriction: string) => {
+    setDietaryRestrictions(prev =>
+      prev.includes(restriction)
+        ? prev.filter(r => r !== restriction)
+        : [...prev, restriction]
+    );
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post('http://localhost:8000/analyze-pantry', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      setPantryIngredients(response.data.ingredients);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const errorMessage = error.response?.data?.detail || 'Failed to analyze pantry image';
+        alert(errorMessage);
+        console.error('API Error:', {
+          message: error.response?.data?.detail || error.message,
+          status: error.response?.status,
+          data: error.response?.data
+        });
+      } else {
+        alert('Failed to upload image. Please try again.');
+        console.error('Upload Error:', error instanceof Error ? error.message : 'Unknown error occurred');
+      }
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  return (
+    <ThemeProvider theme={theme}>
+      <Container maxWidth="md" sx={{ py: 4 }}>
+        <Typography variant="h3" component="h1" gutterBottom align="center">
+          Recipe Generator
+        </Typography>
+
+        {meal && (
+          <Paper elevation={3} sx={{ mb: 4, p: 3 }}>
+            <Typography variant="h5" component="h2" gutterBottom>
+              Your Recipe:
+            </Typography>
+            {recipeImage && (
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+                <Image
+                  src={recipeImage}
+                  alt="Generated recipe"
+                  width={300}
+                  height={300}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    borderRadius: '8px'
+                  }}
+                />
+              </Box>
+            )}
+            <Box
+              className="meal-plan-content"
+              dangerouslySetInnerHTML={{ __html: meal }}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+          </Paper>
+        )}
+
+        <Paper component="form" onSubmit={handleSubmit} elevation={3} sx={{ p: 3 }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Describe your meal"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g., quick pasta dish, healthy salad, comfort food"
+                variant="outlined"
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                Dietary Restrictions:
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {restrictions.map(restriction => (
+                  <Chip
+                    key={restriction}
+                    label={restriction}
+                    onClick={() => toggleRestriction(restriction)}
+                    color={dietaryRestrictions.includes(restriction) ? "primary" : "default"}
+                    variant={dietaryRestrictions.includes(restriction) ? "filled" : "outlined"}
+                  />
+                ))}
+              </Box>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Button
+                  component="label"
+                  variant="outlined"
+                  startIcon={<CloudUpload />}
+                  disabled={uploadLoading}
+                >
+                  {uploadLoading ? 'Analyzing Pantry...' : 'Upload Pantry Image'}
+                  <VisuallyHiddenInput type="file" onChange={handleImageUpload} accept="image/*" />
+                </Button>
+
+                {pantryIngredients && (
+                  <Paper sx={{ p: 2, mt: 2, bgcolor: 'background.paper' }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Detected Ingredients:
+                    </Typography>
+                    <Typography variant="body2">
+                      {pantryIngredients}
+                    </Typography>
+                  </Paper>
+                )}
+              </Box>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Button
+                type="submit"
+                variant="contained"
+                fullWidth
+                disabled={loading}
+                size="large"
+                sx={{ py: 1.5 }}
+              >
+                {loading ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <CircularProgress size={24} color="inherit" />
+                    Generating your recipe...
+                  </Box>
+                ) : 'Generate Recipe'}
+              </Button>
+            </Grid>
+          </Grid>
+        </Paper>
+      </Container>
+    </ThemeProvider>
   );
 }
